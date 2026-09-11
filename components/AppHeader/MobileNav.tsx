@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV = [
-  { href: "/",        label: "Players" },
+  { href: "/players", label: "Players" },
   { href: "/draft",   label: "Draft"   },
   { href: "/scores",  label: "Scores"  },
   { href: "/claim",   label: "Claim"   },
@@ -14,12 +15,11 @@ const NAV = [
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
 
-  // Close on route change
+  useEffect(() => { setMounted(true); }, []);
   useEffect(() => { setOpen(false); }, [pathname]);
-
-  // Prevent body scroll when open
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -44,8 +44,11 @@ export function MobileNav() {
         )}
       </button>
 
-      {open && (
-        <div className="sm:hidden fixed inset-0 top-14 z-40 bg-[#09090B]/96 backdrop-blur-md flex flex-col">
+      {mounted && open && createPortal(
+        <div
+          className="sm:hidden fixed inset-0 z-[100] flex flex-col"
+          style={{ top: "56px", background: "#09090B" }}
+        >
           <nav className="px-3 py-3 space-y-0.5">
             {NAV.map(({ href, label }) => (
               <Link
@@ -57,7 +60,8 @@ export function MobileNav() {
               </Link>
             ))}
           </nav>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
