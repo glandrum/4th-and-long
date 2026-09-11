@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { getDraftById, deleteDraftById } from "@/lib/draft";
+import { autoStartIfReady, getDraftById, deleteDraftById } from "@/lib/draft";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
@@ -10,7 +10,7 @@ export async function GET(
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const draft = await getDraftById(id);
+  const draft = await autoStartIfReady(id);
 
   if (!draft) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

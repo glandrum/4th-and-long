@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AppHeader } from "@/components/AppHeader";
 import { DraftBoard } from "@/components/DraftBoard";
-import { getDraftById } from "@/lib/draft";
+import { autoStartIfReady } from "@/lib/draft";
 import { getClaimByUserId, getAllClaims } from "@/lib/claims";
 import clientPromise from "@/lib/mongodb";
 import type { PickerPlayer } from "@/lib/types";
@@ -33,7 +33,7 @@ export default async function DraftDetailPage({
   const userId = session.user.id!;
 
   const [draft, players, claim, allClaims] = await Promise.all([
-    getDraftById(id),
+    autoStartIfReady(id),
     getPickerPlayers(),
     getClaimByUserId(userId),
     getAllClaims(),

@@ -317,7 +317,7 @@ export async function seedDrafts(season: number): Promise<{ divisions: number; d
   for (const division of ALL_DIVS) {
     for (let week = 1; week <= 17; week++) {
       const start_time = WEEK_START_TIMES[week - 1];
-      const input = { start_time, pick_duration_hours: 1 };
+      const input = { start_time, pick_duration_hours: 0.5 };
 
       // Draft docs do NOT store participants — derived from divisions collection at read time
       const doc = {
@@ -326,7 +326,7 @@ export async function seedDrafts(season: number): Promise<{ divisions: number; d
         division,
         start_time,
         timezone:            "America/Chicago",
-        pick_duration_hours: 24,
+        pick_duration_hours: 0.5,
         picks:               buildPicks(input, 5),
         status:              "pending" as const,
         created_at:          now,
@@ -451,5 +451,27 @@ export async function resetDraft(id: string): Promise<Draft | null> {
   });
 
   await col.updateOne({ _id: oid }, { $set });
+  return getDraftById(id);
+}
+
+// Auto-transition a pending draft to active when its scheduled start_time has arrived.
+// Unlike startDraft(), this preserves the original start_time and pre-computed unlock_at
+// times so picks unlock on the Thursday schedule without any manual intervention.
+export async function autoStartIfReady(id: string): Promise<Draft | null> {
+  let oid: ObjectId;
+  try { oid = new ObjectId(id); } catch { return null; }
+
+  const client = await clientPromise;
+  const col = client.db(DB_NAME).collection(COL);
+  const doc = await col.findOne({ _id: oid });
+  if (!doc) return null;
+
+  if (doc.status === "pending" && new Date() >= new Date(doc.start_time as string)) {
+    await col.updateOne(
+      { _id: oid },
+      { $set: { status: "active", updated_at: new Date().toISOString() } }
+    );
+  }
+
   return getDraftById(id);
 }
