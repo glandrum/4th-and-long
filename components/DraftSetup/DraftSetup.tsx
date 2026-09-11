@@ -4,30 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ALL_DIVISIONS, DIVISION_PARTICIPANTS } from "@/lib/divisions";
 
-const TIMEZONES = [
-  { label: "Eastern (ET)",    value: "America/New_York"    },
-  { label: "Central (CT)",    value: "America/Chicago"     },
-  { label: "Mountain (MT)",   value: "America/Denver"      },
-  { label: "Pacific (PT)",    value: "America/Los_Angeles" },
-  { label: "Arizona (AZ)",    value: "America/Phoenix"     },
-  { label: "Alaska (AK)",     value: "America/Anchorage"   },
-  { label: "Hawaii (HI)",     value: "Pacific/Honolulu"    },
-];
-
-const DURATIONS = [
-  { label: "30 min",  value: 0.5 },
-  { label: "1 hour",  value: 1   },
-  { label: "2 hours", value: 2   },
-];
-
 interface DraftSetupProps {
   week: number;
   season: number;
   division?: string;
-}
-
-function toUTC(localStr: string): string {
-  return new Date(localStr).toISOString();
 }
 
 function getRotatedNames(division: string, week: number): string[] {
@@ -43,9 +23,6 @@ export function DraftSetup({ week, season, division: divisionProp = "" }: DraftS
   const [selectedWeek, setSelectedWeek] = useState(week);
   const [division, setDivision]         = useState(divisionProp);
   const [names, setNames]               = useState(["", "", "", "", ""]);
-  const [startTime, setStartTime]       = useState("");
-  const [timezone, setTimezone]         = useState("America/Chicago");
-  const [duration, setDuration]         = useState(1);
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
 
@@ -60,12 +37,6 @@ export function DraftSetup({ week, season, division: divisionProp = "" }: DraftS
     e.preventDefault();
     setError(null);
 
-    if (!startTime) {
-      setError("Pick a start date and time.");
-      return;
-    }
-
-    // For custom drafts, validate manual entries
     if (!isDivisionDraft) {
       const count = names.filter(n => n.trim().length > 0).length;
       if (count < 2) {
@@ -75,15 +46,11 @@ export function DraftSetup({ week, season, division: divisionProp = "" }: DraftS
     }
 
     const body: Record<string, unknown> = {
-      week:                selectedWeek,
+      week: selectedWeek,
       season,
       division,
-      start_time:          toUTC(startTime),
-      timezone,
-      pick_duration_hours: duration,
     };
 
-    // For custom drafts, send participant names; for division drafts the server derives them
     if (!isDivisionDraft) {
       body.participants = names
         .map((name, i) => ({ name: name.trim(), order: i + 1 }))
@@ -121,7 +88,7 @@ export function DraftSetup({ week, season, division: divisionProp = "" }: DraftS
       <div className="mb-8">
         <h2 className="text-xl font-semibold tracking-[-0.03em] text-white">New Draft</h2>
         <p className="text-[13px] text-zinc-500 mt-1">
-          Configure the week, division, and timing for this draft.
+          Pick duration and start time are configured on the draft board.
         </p>
       </div>
 
@@ -158,7 +125,6 @@ export function DraftSetup({ week, season, division: divisionProp = "" }: DraftS
 
         {/* Participants */}
         {isDivisionDraft ? (
-          // Division draft — show auto-computed pick order (read-only)
           <div>
             <label className={labelClass}>
               Pick order
@@ -177,7 +143,6 @@ export function DraftSetup({ week, season, division: divisionProp = "" }: DraftS
             </div>
           </div>
         ) : (
-          // Custom draft — manual participant entry
           <div>
             <label className={labelClass}>Participants <span className="normal-case text-zinc-600 tracking-normal">(up to 5)</span></label>
             <div className="space-y-2">
@@ -196,58 +161,6 @@ export function DraftSetup({ week, season, division: divisionProp = "" }: DraftS
             </div>
           </div>
         )}
-
-        {/* Start time + timezone */}
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
-          <div>
-            <label className={labelClass}>Draft Start</label>
-            <input
-              type="datetime-local"
-              value={startTime}
-              onChange={e => setStartTime(e.target.value)}
-              className={inputClass + " [color-scheme:dark]"}
-              required
-            />
-          </div>
-          <div>
-            <label className={labelClass}>Timezone</label>
-            <select
-              value={timezone}
-              onChange={e => setTimezone(e.target.value)}
-              className={inputClass + " cursor-pointer sm:min-w-[130px]"}
-            >
-              {TIMEZONES.map(tz => (
-                <option key={tz.value} value={tz.value}>{tz.label}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Pick duration */}
-        <div>
-          <label className={labelClass}>Time per pick</label>
-          <div className="flex flex-wrap gap-2">
-            {DURATIONS.map(d => (
-              <button
-                key={d.value}
-                type="button"
-                onClick={() => setDuration(d.value)}
-                className={[
-                  "h-8 px-3 rounded-lg text-[12px] font-medium transition-colors cursor-pointer",
-                  "border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A84C]",
-                  duration === d.value
-                    ? "bg-[#C9A84C] border-[#C9A84C] text-zinc-950"
-                    : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200",
-                ].join(" ")}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] text-zinc-600 mt-2">
-            Each pick unlocks on schedule. Submitting early opens the next window immediately.
-          </p>
-        </div>
 
         {error && (
           <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">

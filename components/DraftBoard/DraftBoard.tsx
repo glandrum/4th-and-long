@@ -2,21 +2,15 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { DraftSetup } from "@/components/DraftSetup";
 import type { Draft, DraftPick, DraftPosition, PickerPlayer, PositionSelection, Claim } from "@/lib/types";
 
 const PICK_DURATIONS = [
-  { label: "30 min", value: 0.5 },
-  { label: "1 hour", value: 1   },
-  { label: "2 hours", value: 2  },
+  { label: "30 min",  value: 0.5 },
+  { label: "1 hour",  value: 1   },
+  { label: "2 hours", value: 2   },
+  { label: "24 hours", value: 24 },
 ];
-
-function toDatetimeLocal(iso: string): string {
-  const d = new Date(iso);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-}
-function toUTC(local: string): string { return new Date(local).toISOString(); }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -656,15 +650,13 @@ interface DraftBoardProps {
 }
 
 export function DraftBoard({ initialDraft, players, week, season, claimedName, claims = [] }: DraftBoardProps) {
-  const router                          = useRouter();
   const [draft, setDraft]               = useState<Draft | null>(initialDraft);
   const [now, setNow]                   = useState(new Date());
   const [selectedPick, setSelectedPick] = useState<number | null>(null);
 
   // Pending config state
-  const [cfgStart, setCfgStart]       = useState(initialDraft ? toDatetimeLocal(initialDraft.start_time) : "");
-  const [cfgDuration, setCfgDuration] = useState(initialDraft?.pick_duration_hours ?? 1);
-  const [cfgBusy, setCfgBusy]         = useState<"save" | "start" | null>(null);
+  const [cfgDuration, setCfgDuration] = useState(initialDraft?.pick_duration_hours ?? 0.5);
+  const [cfgBusy, setCfgBusy]         = useState<"start" | null>(null);
   const [cfgError, setCfgError]       = useState<string | null>(null);
 
   // Reset state
@@ -707,27 +699,15 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
 
   const handleClose = useCallback(() => setSelectedPick(null), []);
 
-  async function handleSaveConfig() {
-    if (!draft) return;
-    setCfgBusy("save"); setCfgError(null);
-    try {
-      const res = await fetch(`/api/draft/${draft._id}/config`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ start_time: toUTC(cfgStart), pick_duration_hours: cfgDuration }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed");
-      setDraft(data.draft);
-    } catch (e) { setCfgError(e instanceof Error ? e.message : "Failed"); }
-    finally { setCfgBusy(null); }
-  }
-
   async function handleStart() {
     if (!draft) return;
     setCfgBusy("start"); setCfgError(null);
     try {
-      const res = await fetch(`/api/draft/${draft._id}/start`, { method: "POST" });
+      const res = await fetch(`/api/draft/${draft._id}/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pick_duration_hours: cfgDuration }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setDraft(data.draft);
@@ -743,7 +723,6 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       const updated: Draft = data.draft;
-      setCfgStart(toDatetimeLocal(updated.start_time));
       setCfgDuration(updated.pick_duration_hours);
       setDraft(updated);
       setSelectedPick(null);
@@ -755,105 +734,7 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
     return <DraftSetup week={week} season={season} />;
   }
 
-  // ── Pending panel ─────────────────────────────────────────────────────────────
-  if (draft.status === "pending") {
-    const inputCls = "w-full h-9 px-3 rounded-lg bg-zinc-800 border border-zinc-700 text-[13px] text-zinc-200 focus:outline-none focus:border-zinc-500 transition-colors [color-scheme:dark]";
-    const labelCls = "block text-[11px] font-medium text-zinc-500 uppercase tracking-wider mb-1.5";
-
-    return (
-      <div className="w-full max-w-lg">
-        {/* Title */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold tracking-[-0.03em] text-white">
-            {draft.division ? `${draft.division} — Week ${draft.week}` : `Week ${draft.week} Draft`}
-          </h2>
-          <p className="text-[13px] text-zinc-500 mt-1">Configure and start this draft.</p>
-        </div>
-
-        {/* Pick order */}
-        <div className="mb-8">
-          <p className={labelCls}>Pick order</p>
-          <div className="space-y-1.5">
-            {draft.participants.map((p, i) => {
-              const pass2Idx = draft.participants.length * 2 - 1 - i;
-              return (
-                <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800">
-                  <span className={`w-5 h-5 rounded-full border flex items-center justify-center text-[9px] font-bold shrink-0 ${DRAFTER_BG[i]}`}>
-                    {p.name.charAt(0).toUpperCase()}
-                  </span>
-                  <span className={`text-[13px] font-medium flex-1 ${DRAFTER_ACCENT[i]}`}>{p.name}</span>
-                  <span className="text-[10px] text-zinc-600 font-mono">
-                    picks {i + 1} + {pass2Idx + 1}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Config */}
-        <div className="space-y-5 mb-8 p-5 rounded-xl bg-zinc-900 border border-zinc-800">
-          <div>
-            <label className={labelCls}>Start time</label>
-            <input
-              type="datetime-local"
-              value={cfgStart}
-              onChange={e => setCfgStart(e.target.value)}
-              className={inputCls}
-            />
-            <p className="text-[11px] text-zinc-600 mt-1.5">
-              Clicking "Start Draft" will begin the draft immediately regardless of this time.
-            </p>
-          </div>
-          <div>
-            <label className={labelCls}>Time per pick</label>
-            <div className="flex gap-2">
-              {PICK_DURATIONS.map(d => (
-                <button
-                  key={d.value}
-                  type="button"
-                  onClick={() => setCfgDuration(d.value)}
-                  className={[
-                    "flex-1 h-9 rounded-lg text-[13px] font-medium transition-colors cursor-pointer border",
-                    cfgDuration === d.value
-                      ? "bg-[#C9A84C] border-[#C9A84C] text-zinc-950"
-                      : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200",
-                  ].join(" ")}
-                >
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {cfgError && (
-            <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{cfgError}</p>
-          )}
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleSaveConfig}
-              disabled={cfgBusy !== null}
-              className="h-9 px-4 rounded-lg text-[13px] font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {cfgBusy === "save" ? "Saving…" : "Save"}
-            </button>
-            <button
-              onClick={handleStart}
-              disabled={cfgBusy !== null}
-              className="flex-1 h-9 rounded-xl text-[13.5px] font-semibold bg-[#C9A84C] hover:bg-[#D4B86A] text-zinc-950 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {cfgBusy === "start" ? "Starting…" : "Start Draft"}
-            </button>
-          </div>
-        </div>
-
-        <a href="/draft" className="text-[12px] text-zinc-600 hover:text-zinc-400 transition-colors">
-          ← Back to drafts
-        </a>
-      </div>
-    );
-  }
+  const pending = draft.status === "pending";
 
   const pass1 = draft.picks.filter(p => p.pass === 1); // drafter 0→4
   const pass2 = draft.picks.filter(p => p.pass === 2); // drafter 4→0 stored, displayed by drafter order
@@ -888,10 +769,14 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
             {draft.division ? `${draft.division} — Week ${draft.week}` : `Week ${draft.week} Draft`}
           </h2>
           <p className="text-[13px] text-zinc-500 mt-0.5">
-            {formatTime(draft.start_time, tz)}
-            {" · "}{draft.pick_duration_hours < 1 ? `${draft.pick_duration_hours * 60}m` : `${draft.pick_duration_hours}h`} per pick
-            {onClockPick && (
-              <> · <span className="text-[#C9A84C]">{draft.participants[onClockPick.drafter_idx]?.name} on the clock</span></>
+            {pending ? "Not started" : (
+              <>
+                {formatTime(draft.start_time, tz)}
+                {" · "}{draft.pick_duration_hours < 1 ? `${draft.pick_duration_hours * 60}m` : `${draft.pick_duration_hours}h`} per pick
+                {onClockPick && (
+                  <> · <span className="text-[#C9A84C]">{draft.participants[onClockPick.drafter_idx]?.name} on the clock</span></>
+                )}
+              </>
             )}
             {claimedName && myDrafterIdx !== -1 && (
               <> · <span className="text-zinc-400">you: <span className="text-white font-medium">{claimedName}</span></span></>
@@ -902,28 +787,32 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="hidden sm:flex gap-1">
-            {draft.picks.map(p => {
-              const s = getPickStatus(p, now, durationMs);
-              return (
-                <div key={p.pick_num} className={[
-                  "w-2 h-2 rounded-full",
-                  s === "complete"  ? "bg-emerald-400" :
-                  s === "active"    ? "bg-[#C9A84C] animate-pulse" :
-                  s === "overdue"   ? "bg-red-500 animate-pulse" :
-                                     "bg-zinc-700",
-                ].join(" ")} />
-              );
-            })}
-          </div>
+          {!pending && (
+            <div className="hidden sm:flex gap-1">
+              {draft.picks.map(p => {
+                const s = getPickStatus(p, now, durationMs);
+                return (
+                  <div key={p.pick_num} className={[
+                    "w-2 h-2 rounded-full",
+                    s === "complete"  ? "bg-emerald-400" :
+                    s === "active"    ? "bg-[#C9A84C] animate-pulse" :
+                    s === "overdue"   ? "bg-red-500 animate-pulse" :
+                                       "bg-zinc-700",
+                  ].join(" ")} />
+                );
+              })}
+            </div>
+          )}
           <span className="text-[11px] text-zinc-600">{completedCount}/{draft.picks.length} complete</span>
-          <button
-            onClick={handleReset}
-            disabled={resetBusy}
-            className="text-[11px] text-zinc-600 hover:text-red-400 transition-colors cursor-pointer border border-zinc-800 rounded-lg px-2 sm:px-2.5 py-1 hover:border-red-500/50 disabled:opacity-50"
-          >
-            {resetBusy ? "…" : "Reset"}
-          </button>
+          {!pending && (
+            <button
+              onClick={handleReset}
+              disabled={resetBusy}
+              className="text-[11px] text-zinc-600 hover:text-red-400 transition-colors cursor-pointer border border-zinc-800 rounded-lg px-2 sm:px-2.5 py-1 hover:border-red-500/50 disabled:opacity-50"
+            >
+              {resetBusy ? "…" : "Reset"}
+            </button>
+          )}
           <a
             href="/draft"
             className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors border border-zinc-800 rounded-lg px-2 sm:px-2.5 py-1 hover:border-zinc-600"
@@ -932,6 +821,42 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
           </a>
         </div>
       </div>
+
+      {/* ── Start controls (pending only) ── */}
+      {pending && (
+        <div className="flex items-center gap-3 flex-wrap p-4 rounded-xl bg-zinc-900 border border-zinc-800">
+          <span className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider shrink-0">Time per pick</span>
+          <div className="flex gap-1.5 flex-wrap">
+            {PICK_DURATIONS.map(d => (
+              <button
+                key={d.value}
+                type="button"
+                onClick={() => setCfgDuration(d.value)}
+                className={[
+                  "h-8 px-3 rounded-lg text-[12px] font-medium transition-colors cursor-pointer border",
+                  cfgDuration === d.value
+                    ? "bg-[#C9A84C] border-[#C9A84C] text-zinc-950"
+                    : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200",
+                ].join(" ")}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            {cfgError && (
+              <span className="text-[11px] text-red-400">{cfgError}</span>
+            )}
+            <button
+              onClick={handleStart}
+              disabled={cfgBusy !== null}
+              className="h-9 px-5 rounded-xl text-[13px] font-semibold bg-[#C9A84C] hover:bg-[#D4B86A] text-zinc-950 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {cfgBusy === "start" ? "Starting…" : "Start Draft"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Split: board + sidebar ── */}
       <div className="flex gap-5 items-start">
@@ -958,7 +883,7 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
                 <PickCard
                   key={pick.pick_num}
                   pick={pick}
-                  status={getPickStatus(pick, now, durationMs)}
+                  status={pending ? "locked" : getPickStatus(pick, now, durationMs)}
                   drafterName={dName}
                   drafterImage={imageMap.get(dName)}
                   isSelected={selectedPick === pick.pick_num}
@@ -997,7 +922,7 @@ export function DraftBoard({ initialDraft, players, week, season, claimedName, c
                 <PickCard
                   key={pick.pick_num}
                   pick={pick}
-                  status={getPickStatus(pick, now, durationMs)}
+                  status={pending ? "locked" : getPickStatus(pick, now, durationMs)}
                   drafterName={dName}
                   drafterImage={imageMap.get(dName)}
                   isSelected={selectedPick === pick.pick_num}

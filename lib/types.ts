@@ -90,7 +90,7 @@ export interface CreateDraftInput {
   division: string;
   // Only required when division is "" (custom draft — not backed by a division doc)
   participants?: DraftParticipant[];
-  start_time: string;
-  timezone: string;
-  pick_duration_hours: number;
+  start_time?: string;
+  timezone?: string;
+  pick_duration_hours?: number;
 }

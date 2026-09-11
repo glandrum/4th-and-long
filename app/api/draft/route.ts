@@ -29,12 +29,7 @@ export async function POST(req: NextRequest) {
   if (!body.division && (!body.participants || body.participants.length < 2 || body.participants.length > 5)) {
     return NextResponse.json({ error: "Custom drafts need 2–5 participants" }, { status: 400 });
   }
-  if (!body.start_time) {
-    return NextResponse.json({ error: "Start time is required" }, { status: 400 });
-  }
-  if (!body.pick_duration_hours || body.pick_duration_hours <= 0) {
-    return NextResponse.json({ error: "Pick duration must be positive" }, { status: 400 });
-  }
+
 
   try {
     const draft = await createDraft({

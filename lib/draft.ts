@@ -157,17 +157,19 @@ export async function createDraft(input: CreateDraftInput): Promise<Draft> {
   const participantCount = participants.length || 5;
 
   const now = new Date().toISOString();
+  const startTime = input.start_time ?? now;
+  const duration = input.pick_duration_hours ?? 0.5;
   // For division-based drafts, do NOT store participants — they're derived at read time.
   // For custom drafts (division=""), store them since there's no division doc to look up.
   const doc: Record<string, unknown> = {
     week:                input.week,
     season:              input.season,
     division:            input.division,
-    start_time:          input.start_time,
-    timezone:            input.timezone,
-    pick_duration_hours: input.pick_duration_hours,
-    picks:               buildPicks(input, participantCount),
-    status:              "active" as const,
+    start_time:          startTime,
+    timezone:            input.timezone ?? "America/Chicago",
+    pick_duration_hours: duration,
+    picks:               buildPicks({ start_time: startTime, pick_duration_hours: duration }, participantCount),
+    status:              "pending" as const,
     created_at:          now,
     updated_at:          now,
   };
@@ -395,7 +397,7 @@ export async function updateDraftConfig(
 // Transition a pending draft to active.
 // Sets start_time to NOW so pick 1 is immediately available, then recomputes
 // all unlock_at offsets from that moment using the draft's pick_duration_hours.
-export async function startDraft(id: string): Promise<Draft | null> {
+export async function startDraft(id: string, pickDurationHours?: number): Promise<Draft | null> {
   let oid: ObjectId;
   try { oid = new ObjectId(id); } catch { return null; }
 
@@ -405,13 +407,15 @@ export async function startDraft(id: string): Promise<Draft | null> {
   if (!doc || doc.status !== "pending") return null;
 
   const now = new Date();
-  const windowMs = (doc.pick_duration_hours as number) * 60 * 60 * 1000;
+  const duration = pickDurationHours ?? (doc.pick_duration_hours as number);
+  const windowMs = duration * 60 * 60 * 1000;
   const picks = doc.picks as DraftPick[];
 
   const $set: Record<string, unknown> = {
-    status:     "active",
-    start_time: now.toISOString(),
-    updated_at: now.toISOString(),
+    status:              "active",
+    start_time:          now.toISOString(),
+    pick_duration_hours: duration,
+    updated_at:          now.toISOString(),
   };
   picks.forEach((_, i) => {
     $set[`picks.${i}.unlock_at`] = new Date(now.getTime() + i * windowMs).toISOString();
